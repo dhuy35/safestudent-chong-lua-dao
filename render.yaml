@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: safestudent-chong-lua-dao
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    autoDeploy: true
