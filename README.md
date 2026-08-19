@@ -1,23 +1,10 @@
-# SafeStudent – Sổ tay chống lừa đảo sinh viên
+# SafeStudent – bản GitHub/Render không dùng thư mục src
 
-Website tra cứu 22 nhóm lừa đảo, checklist kiểm tra nhanh, quy trình xử lý khẩn cấp và chatbot prototype theo luật an toàn.
+Tất cả file code được đặt ở thư mục gốc để có thể upload trực tiếp bằng giao diện GitHub mà không bị mất thư mục con.
 
-## Chạy trên máy tính
-
-```bash
-npm install
-npm run dev
-```
-
-## Build
-
-```bash
-npm run build
-```
-
-Render Static Site:
+## Render Static Site
 
 - Build Command: `npm install && npm run build`
 - Publish Directory: `dist`
 
-Chatbot hiện là prototype rule-based. Không đặt API key vào mã nguồn frontend hoặc GitHub.
+Không upload nguyên file ZIP. Giải nén rồi upload toàn bộ file bên trong.
