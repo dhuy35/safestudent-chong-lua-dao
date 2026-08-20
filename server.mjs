@@ -4,6 +4,7 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const model = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
 const limiter = new Map();
+const logLimiter = new Map();
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -22,10 +23,33 @@ function allowRequest(ip) {
   return entry.count <= maxRequests;
 }
 
+function allowLogRequest(ip) {
+  const now = Date.now();
+  const windowMs = 10 * 60 * 1000;
+  const maxRequests = 60;
+  const entry = logLimiter.get(ip);
+  if (!entry || now - entry.startedAt > windowMs) {
+    logLimiter.set(ip, { startedAt: now, count: 1 });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= maxRequests;
+}
+
+function redactSensitive(value) {
+  return String(value || "")
+    .replace(/\b\d{9,19}\b/g, "[SỐ ĐÃ ẨN]")
+    .replace(/((?:otp|pin|cvv|mật khẩu|mat khau|password)\s*(?:là|la|:|=)?\s*)\S+/gi, "$1[ĐÃ ẨN]")
+    .slice(0, 6000);
+}
+
 setInterval(() => {
   const cutoff = Date.now() - 10 * 60 * 1000;
   for (const [ip, entry] of limiter) {
     if (entry.startedAt < cutoff) limiter.delete(ip);
+  }
+  for (const [ip, entry] of logLimiter) {
+    if (entry.startedAt < cutoff) logLimiter.delete(ip);
   }
 }, 10 * 60 * 1000).unref();
 
@@ -33,9 +57,64 @@ app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     aiConfigured: Boolean(process.env.GEMINI_API_KEY),
+    loggingConfigured: Boolean(process.env.LOG_WEBHOOK_URL),
     provider: "gemini",
     model
   });
+});
+
+app.post("/api/log", async (req, res) => {
+  if (!allowLogRequest(req.ip || "unknown")) {
+    return res.status(429).json({ error: "Gửi log quá nhanh." });
+  }
+  if (!process.env.LOG_WEBHOOK_URL) {
+    return res.status(503).json({ error: "Chưa cấu hình nơi nhận log." });
+  }
+
+  const input = redactSensitive(req.body?.input).trim();
+  const answer = redactSensitive(req.body?.answer).trim();
+  if (!input || !answer) {
+    return res.status(400).json({ error: "Log thiếu câu hỏi hoặc phản hồi." });
+  }
+
+  const log = {
+    timestamp: new Date().toISOString(),
+    user: String(req.body?.user || "ANONYMOUS").slice(0, 100),
+    sessionId: String(req.body?.sessionId || "").slice(0, 100),
+    input,
+    answer,
+    responseTimeMs: Math.max(0, Math.min(Number(req.body?.responseTimeMs) || 0, 300000)),
+    source: String(req.body?.source || "unknown").slice(0, 50),
+    caseTitle: String(req.body?.caseTitle || "").slice(0, 300),
+    model: String(req.body?.model || model).slice(0, 100),
+    status: String(req.body?.status || "success").slice(0, 50),
+    secret: process.env.LOG_WEBHOOK_SECRET || ""
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+    let response;
+    try {
+      response = await fetch(process.env.LOG_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(log),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    const webhookResult = await response.json().catch(() => null);
+    if (!response.ok || webhookResult?.ok !== true) {
+      console.error("Log webhook failed:", response.status, webhookResult?.error || "invalid_response");
+      return res.status(502).json({ error: "Không ghi được log." });
+    }
+    return res.status(201).json({ ok: true });
+  } catch (error) {
+    console.error("Log webhook failed:", error?.name || "unknown");
+    return res.status(502).json({ error: "Không ghi được log." });
+  }
 });
 
 app.post("/api/chat", async (req, res) => {

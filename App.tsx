@@ -98,10 +98,36 @@ function answerFromCase(hit:Scam,input:string){
   return `MỨC ĐỘ: CẦN THẬN TRỌNG\n\nTình huống đang trao đổi: ${hit.title}.\n\n${hit.action}\n\nDấu hiệu cần đối chiếu:\n${hit.signs.slice(0,4).map((s,i)=>`${i+1}. ${s}`).join("\n")}\n\nNếu xuất hiện chi tiết mới không nằm trong các dấu hiệu trên, hãy nói rõ để trợ lý phân tích thêm.`;
 }
 
-export default function Home(){const[group,setGroup]=useState("Tất cả"),[query,setQuery]=useState(""),[selected,setSelected]=useState<Scam|null>(null),[chat,setChat]=useState(false),[input,setInput]=useState(""),[checks,setChecks]=useState<boolean[]>(Array(8).fill(false)),[messages,setMessages]=useState<{role:"bot"|"user",text:string}[]>([{role:"bot",text:"Chào bạn! Hãy kể điều đang xảy ra. Mình sẽ tìm dấu hiệu rủi ro và hướng dẫn bước an toàn tiếp theo.\n\nĐừng gửi OTP, mật khẩu, PIN, CVV hoặc CCCD đầy đủ."}]),[activeCase,setActiveCase]=useState<Scam|null>(null),[loading,setLoading]=useState(false);const filtered=useMemo(()=>scams.filter(s=>(group==="Tất cả"||s.group===group)&&norm([s.title,s.desc,...s.keys].join(" ")).includes(norm(query))),[group,query]);const count=checks.filter(Boolean).length;async function send(e?:FormEvent,preset?:string){
+function createId(prefix:string){
+  const random=typeof crypto!=="undefined"&&"randomUUID" in crypto?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36);
+  return `${prefix}_${random}`;
+}
+
+function getUserId(){
+  try{
+    const key="safestudent_user_id";
+    const saved=localStorage.getItem(key);
+    if(saved)return saved;
+    const created=createId("USER");
+    localStorage.setItem(key,created);
+    return created;
+  }catch{return createId("USER")}
+}
+
+function recordLog(payload:{user:string;sessionId:string;input:string;answer:string;responseTimeMs:number;source:string;caseTitle?:string;model?:string;status?:string}){
+  fetch("/api/log",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(payload),
+    keepalive:true
+  }).catch(()=>{});
+}
+
+export default function Home(){const[group,setGroup]=useState("Tất cả"),[query,setQuery]=useState(""),[selected,setSelected]=useState<Scam|null>(null),[chat,setChat]=useState(false),[input,setInput]=useState(""),[checks,setChecks]=useState<boolean[]>(Array(8).fill(false)),[messages,setMessages]=useState<{role:"bot"|"user",text:string}[]>([{role:"bot",text:"Chào bạn! Hãy kể điều đang xảy ra. Mình sẽ tìm dấu hiệu rủi ro và hướng dẫn bước an toàn tiếp theo.\n\nĐừng gửi OTP, mật khẩu, PIN, CVV hoặc CCCD đầy đủ."}]),[activeCase,setActiveCase]=useState<Scam|null>(null),[loading,setLoading]=useState(false),[userId]=useState(getUserId),[sessionId]=useState(()=>createId("SESSION"));const filtered=useMemo(()=>scams.filter(s=>(group==="Tất cả"||s.group===group)&&norm([s.title,s.desc,...s.keys].join(" ")).includes(norm(query))),[group,query]);const count=checks.filter(Boolean).length;async function send(e?:FormEvent,preset?:string){
   e?.preventDefault();
   const v=(preset??input).trim();
   if(!v||loading)return;
+  const startedAt=Date.now();
   const isFirst=!messages.some(m=>m.role==="user");
   const matchedCase=isFirst?strongLocalCase(v):null;
   const conversationCase=activeCase??matchedCase;
@@ -113,6 +139,7 @@ export default function Home(){const[group,setGroup]=useState("Tất cả"),[que
   if(matchedCase)setActiveCase(matchedCase);
   if(useLocalFirst||useLocalFollowup){
     setMessages(m=>[...m,{role:"bot",text:fallback}]);
+    void recordLog({user:userId,sessionId,input:v,answer:fallback,responseTimeMs:Date.now()-startedAt,source:"45_cases",caseTitle:conversationCase?.title,status:"success"});
     return;
   }
   setLoading(true);
@@ -121,8 +148,10 @@ export default function Home(){const[group,setGroup]=useState("Tất cả"),[que
     const data=await response.json().catch(()=>({}));
     const answer=response.ok&&typeof data.answer==="string"?data.answer:fallback;
     setMessages(m=>[...m,{role:"bot",text:answer}]);
+    void recordLog({user:userId,sessionId,input:v,answer,responseTimeMs:Date.now()-startedAt,source:response.ok?(data.source||"gemini"):"fallback",caseTitle:conversationCase?.title,model:data.model,status:response.ok?"success":"api_error"});
   }catch{
     setMessages(m=>[...m,{role:"bot",text:fallback}]);
+    void recordLog({user:userId,sessionId,input:v,answer:fallback,responseTimeMs:Date.now()-startedAt,source:"fallback",caseTitle:conversationCase?.title,status:"network_error"});
   }finally{
     setLoading(false);
   }

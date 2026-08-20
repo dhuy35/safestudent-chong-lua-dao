@@ -12,5 +12,9 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3-flash-preview
+      - key: LOG_WEBHOOK_URL
+        sync: false
+      - key: LOG_WEBHOOK_SECRET
+        sync: false
       - key: NODE_ENV
         value: production
