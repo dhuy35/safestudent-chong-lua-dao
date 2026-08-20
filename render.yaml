@@ -1,7 +1,15 @@
 services:
   - type: web
-    name: safestudent-chong-lua-dao
-    runtime: static
+    name: safestudent-chong-lua-dao-ai
+    runtime: node
     buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
+    startCommand: npm start
     autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6-luna
+      - key: NODE_ENV
+        value: production
