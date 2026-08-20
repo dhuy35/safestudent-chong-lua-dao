@@ -123,7 +123,17 @@ function recordLog(payload:{user:string;sessionId:string;input:string;answer:str
   }).catch(()=>{});
 }
 
-export default function Home(){const[group,setGroup]=useState("Tất cả"),[query,setQuery]=useState(""),[selected,setSelected]=useState<Scam|null>(null),[chat,setChat]=useState(false),[input,setInput]=useState(""),[checks,setChecks]=useState<boolean[]>(Array(8).fill(false)),[messages,setMessages]=useState<{role:"bot"|"user",text:string}[]>([{role:"bot",text:"Chào bạn! Hãy kể điều đang xảy ra. Mình sẽ tìm dấu hiệu rủi ro và hướng dẫn bước an toàn tiếp theo.\n\nĐừng gửi OTP, mật khẩu, PIN, CVV hoặc CCCD đầy đủ."}]),[activeCase,setActiveCase]=useState<Scam|null>(null),[loading,setLoading]=useState(false),[userId]=useState(getUserId),[sessionId]=useState(()=>createId("SESSION"));const filtered=useMemo(()=>scams.filter(s=>(group==="Tất cả"||s.group===group)&&norm([s.title,s.desc,...s.keys].join(" ")).includes(norm(query))),[group,query]);const count=checks.filter(Boolean).length;async function send(e?:FormEvent,preset?:string){
+type QuizItem={tag:string;question:string;answers:string[];correct:number;explain:string};
+const quizData:QuizItem[]=[
+  {tag:"HỌC BỔNG",question:"Email học bổng yêu cầu phí gấp vào tài khoản cá nhân. Bạn làm gì trước?",answers:["Chuyển trước để giữ suất","Hỏi người gửi có hoàn tiền không","Tự mở website ULIS và gọi đơn vị chính thức"],correct:2,explain:"Đáp án C. Logo và con dấu không thay thế việc xác minh qua kênh chính thức."},
+  {tag:"GIẢ DANH",question:"Người tự xưng công an gọi video, yêu cầu giữ bí mật và chuyển tiền. Bạn làm gì?",answers:["Làm theo vì họ biết thông tin cá nhân","Kết thúc cuộc gọi và tự xác minh","Chuyển một khoản nhỏ để kiểm tra"],correct:1,explain:"Đáp án B. Cơ quan công an không yêu cầu chuyển tiền để chứng minh vô tội qua điện thoại."},
+  {tag:"VIỆC LÀM",question:"Trung tâm gia sư thu phí nhưng không cho gặp phụ huynh trước. Lựa chọn an toàn là gì?",answers:["Đóng phí để giữ lớp","Dừng và kiểm chứng trung tâm, phụ huynh, hợp đồng","Gửi ảnh CCCD thay cho phí"],correct:1,explain:"Đáp án B. Cần xác minh người thuê, mức trả, khoản phí và điều kiện hoàn phí bằng văn bản."},
+  {tag:"NHÀ TRỌ",question:"Người đăng phòng yêu cầu đặt cọc trước khi cho xem phòng. Bạn nên làm gì?",answers:["Chuyển một nửa tiền cọc","Tin ảnh giấy tờ họ gửi","Xem phòng và xác minh quyền cho thuê"],correct:2,explain:"Đáp án C. Ảnh CCCD hoặc hợp đồng có thể bị đánh cắp, chỉnh sửa hoặc dùng lại."},
+  {tag:"TÀI KHOẢN",question:"Bạn đã nhập mật khẩu vào một trang đáng ngờ. Hành động đúng là gì?",answers:["Chờ xem có vấn đề không","Tự mở kênh chính thức, đổi mật khẩu và đăng xuất phiên lạ","Nhắn người gửi yêu cầu xóa dữ liệu"],correct:1,explain:"Đáp án B. Hãy dùng thiết bị an toàn, đổi mật khẩu và bật xác thực nhiều lớp."},
+  {tag:"TÀI CHÍNH",question:"Ứng dụng nhiệm vụ yêu cầu nộp thêm phí để được rút tiền. Bạn làm gì?",answers:["Nạp lần cuối để lấy lại tiền","Vay bạn bè hoàn thành nhiệm vụ","Dừng nạp, lưu bằng chứng và gọi ngân hàng"],correct:2,explain:"Đáp án C. Không chuyển thêm tiền để cố lấy lại số tiền đã mất."}
+];
+
+export default function Home(){const[group,setGroup]=useState("Tất cả"),[query,setQuery]=useState(""),[selected,setSelected]=useState<Scam|null>(null),[chat,setChat]=useState(false),[input,setInput]=useState(""),[checks,setChecks]=useState<boolean[]>(Array(8).fill(false)),[messages,setMessages]=useState<{role:"bot"|"user",text:string}[]>([{role:"bot",text:"Chào bạn! Hãy kể điều đang xảy ra. Mình sẽ tìm dấu hiệu rủi ro và hướng dẫn bước an toàn tiếp theo.\n\nĐừng gửi OTP, mật khẩu, PIN, CVV hoặc CCCD đầy đủ."}]),[activeCase,setActiveCase]=useState<Scam|null>(null),[loading,setLoading]=useState(false),[userId]=useState(getUserId),[sessionId]=useState(()=>createId("SESSION")),[quizIndex,setQuizIndex]=useState(0),[quizScore,setQuizScore]=useState(0),[quizChoice,setQuizChoice]=useState<number|null>(null),[quizFinished,setQuizFinished]=useState(false);const filtered=useMemo(()=>scams.filter(s=>(group==="Tất cả"||s.group===group)&&norm([s.title,s.desc,...s.keys].join(" ")).includes(norm(query))),[group,query]);const count=checks.filter(Boolean).length;async function send(e?:FormEvent,preset?:string){
   e?.preventDefault();
   const v=(preset??input).trim();
   if(!v||loading)return;
@@ -155,10 +165,54 @@ export default function Home(){const[group,setGroup]=useState("Tất cả"),[que
   }finally{
     setLoading(false);
   }
-}function open(preset?:string){setChat(true);if(preset)setTimeout(()=>send(undefined,preset),50)}return <main>
-<nav><a className="brand" href="#top"><b>S</b><span>SAFE<em>STUDENT</em></span></a><div className="links"><a href="#lookup">Tra cứu</a><a href="#check">Kiểm tra nhanh</a><a href="#urgent">Khẩn cấp</a></div><button onClick={()=>open()}>💬 Hỏi trợ lý</button></nav>
+}function answerQuiz(choice:number){
+  if(quizChoice!==null||quizFinished)return;
+  setQuizChoice(choice);
+  if(choice===quizData[quizIndex].correct)setQuizScore(score=>score+1);
+  setTimeout(()=>{
+    if(quizIndex===quizData.length-1){setQuizFinished(true);setQuizIndex(quizData.length)}
+    else{setQuizIndex(index=>index+1);setQuizChoice(null)}
+  },1800);
+}function resetQuiz(){setQuizIndex(0);setQuizScore(0);setQuizChoice(null);setQuizFinished(false)}
+function open(preset?:string){setChat(true);if(preset)setTimeout(()=>send(undefined,preset),50)}return <main>
+<nav><a className="brand" href="#top"><b>S</b><span>SAFE<em>CLICK</em></span></a><div className="links"><a href="#handbook">Sổ tay</a><a href="#stories">Tình huống</a><a href="#quiz">Quiz</a><a href="#lookup">45 case</a><a href="#urgent">Khẩn cấp</a></div><button onClick={()=>open()}>💬 Hỏi trợ lý</button></nav>
 <section className="hero" id="top"><div><label>● SỔ TAY AN TOÀN DÀNH CHO SINH VIÊN</label><h1>Cảnh giác trước khi<br/><em>quá muộn.</em></h1><p>Một tin nhắn, đường link hay lời mời “quá tốt để là thật” có thể là khởi đầu của một vụ lừa đảo. Dừng lại và kiểm tra trước khi hành động.</p><div className="actions"><button onClick={()=>open()}>Kể tình huống của bạn →</button><a href="#urgent">Tôi đã chuyển tiền</a></div><small>✓ Không yêu cầu thông tin bí mật　 ✓ Không phán xét　 ✓ Hướng dẫn cụ thể</small></div><div className="phone"><div className="phone-head">●　<b>Kiểm tra tình huống</b>　•••</div><p>Có người tự xưng ngân hàng yêu cầu em đọc mã OTP...</p><section><strong>!</strong><span><small>MỨC ĐỘ RỦI RO</small><b>Nguy cơ cao</b></span></section><h4>3 dấu hiệu đáng ngờ</h4><i>✓ Yêu cầu OTP</i><i>✓ Tạo áp lực thời gian</i><i>✓ Giả danh tổ chức</i></div></section>
-<div className="stats"><div><b>45</b><span>Nhóm lừa đảo</span></div><div><b>7</b><span>Bước xử lý chung</span></div><div><b>24/7</b><span>Trợ lý tình huống</span></div></div>
+<div className="stats"><div><b>45</b><span>Case trong chatbot</span></div><div><b>6</b><span>Nhóm nội dung sổ tay</span></div><div><b>3</b><span>Bước tự bảo vệ</span></div></div>
+<section className="handbook" id="handbook">
+  <header><label>SỔ TAY ĐIỆN TỬ ULIS SAFECLICK</label><h2>Ba bước để lấy lại quyền chủ động</h2><p>Dùng quy trình này trước, trong hoặc ngay sau một tình huống đáng ngờ.</p></header>
+  <div className="safety-flow">
+    <article><span>01</span><b>Dừng lại</b><p>Không chuyển tiền, không bấm link, không đọc OTP, không gửi giấy tờ và không cài ứng dụng.</p></article>
+    <article><span>02</span><b>Kiểm chứng</b><p>Đóng tin nhắn. Tự gõ website chính thức và tự gọi số công khai, không dùng kênh người lạ cung cấp.</p></article>
+    <article><span>03</span><b>Kết nối hỗ trợ</b><p>Nói với người thân, bạn bè, giảng viên, Nhà trường, ngân hàng hoặc công an tùy tình huống.</p></article>
+  </div>
+  <aside><b>Checklist 60 giây</b><span>0–10s: không trả lời ngay</span><span>10–30s: dừng tiền, tài khoản và thiết bị</span><span>30–60s: mở nguồn chính thức hoặc gọi người tin cậy</span></aside>
+</section>
+<section className="story-section" id="stories">
+  <header><label>SÁU NHÓM TÌNH HUỐNG</label><h2>Bạn đang gặp chuyện gì?</h2><p>Chọn nhóm gần nhất để xem câu chuyện, dấu hiệu đỏ và hành động đầu tiên an toàn.</p></header>
+  <div className="story-grid">
+    {[
+      ["01","Giả danh","Công an, Nhà trường, shipper, ngân hàng","Có người tự xưng công an yêu cầu giữ bí mật và chuyển tiền."],
+      ["02","Học tập","Học bổng, trao đổi, du học, học phí","Email học bổng có logo yêu cầu đóng phí giữ suất hôm nay."],
+      ["03","Việc làm","Gia sư, cộng tác viên, phí nhận việc","Lớp gia sư lương tốt nhưng phải chuyển phí trước."],
+      ["04","Nhà trọ","Phòng giá rẻ, đặt cọc, hợp đồng","Người đăng không cho xem phòng nhưng giục đặt cọc ngay."],
+      ["05","Mua bán","Vé, đồ cũ, giao hàng, link hoàn tiền","Người bán gửi link hoàn tiền và yêu cầu đăng nhập ngân hàng."],
+      ["06","Tài chính","OTP, vay app, đầu tư, nhiệm vụ nạp tiền","Ứng dụng nhiệm vụ yêu cầu nạp thêm để được rút tiền."]
+    ].map(x=><article key={x[0]}><span>{x[0]}</span><small>{x[1]}</small><h3>{x[2]}</h3><p>{x[3]}</p><button onClick={()=>open(x[3])}>Hỏi chatbot về tình huống này →</button></article>)}
+  </div>
+</section>
+<section className="mini-quiz quiz-carousel" id="quiz">
+  <header className="quiz-head"><div><label>QUIZ TÌNH HUỐNG</label><h2>Bạn sẽ làm gì?</h2></div><div className="quiz-meta"><b>{quizFinished?quizData.length:quizIndex+1}/{quizData.length}</b><span>Điểm: {quizScore}</span></div></header>
+  <div className="quiz-progress"><i style={{width:`${(quizFinished?100:(quizIndex+1)/quizData.length*100)}%`}}/></div>
+  <div className="quiz-viewport"><div className="quiz-track" style={{transform:`translateX(-${quizIndex*100}%)`}}>
+    {quizData.map((q,qi)=><article className="quiz-slide" key={q.tag} aria-hidden={qi!==quizIndex}>
+      <small>{q.tag}</small><h3>{q.question}</h3>
+      <div className="quiz-options">{q.answers.map((answer,ai)=>{const answered=qi===quizIndex&&quizChoice!==null;const state=answered?(ai===q.correct?"right":ai===quizChoice?"wrong":""):"";return <button className={state} disabled={qi!==quizIndex||quizChoice!==null} onClick={()=>answerQuiz(ai)} key={answer}><b>{String.fromCharCode(65+ai)}</b>{answer}</button>})}</div>
+      <div className={`quiz-feedback ${qi===quizIndex&&quizChoice!==null?"show":""}`}><b>{quizChoice===q.correct?"Chính xác!":"Chưa đúng."}</b><span>{q.explain}</span><em>Tự chuyển sang câu tiếp theo…</em></div>
+    </article>)}
+    <article className="quiz-slide quiz-result"><span>✓</span><h3>Hoàn thành!</h3><p>Bạn trả lời đúng <b>{quizScore}/{quizData.length}</b> câu.</p><small>{quizScore===quizData.length?"Rất tốt — bạn đã nhận diện đúng mọi tình huống.":"Hãy thử lại để ghi nhớ cách xử lý an toàn."}</small><button onClick={resetQuiz}>Làm lại quiz</button></article>
+  </div></div>
+  <div className="quiz-dots">{quizData.map((q,i)=><i className={i<quizIndex?"done":i===quizIndex?"active":""} key={q.tag}/>)}</div>
+</section>
 <section className="content" id="lookup"><header><div><label>KHO TÌNH HUỐNG</label><h2>Bạn đang lo lắng về điều gì?</h2><p>Tra cứu 45 tình huống thực tế theo ngôn ngữ sinh viên.</p></div><input placeholder="Tìm: nhà trọ, OTP, việc làm..." value={query} onChange={e=>setQuery(e.target.value)}/></header><div className="filters">{groups.map(g=><button className={g===group?"active":""} key={g} onClick={()=>setGroup(g)}>{g}</button>)}</div><div className="grid">{filtered.slice(0,9).map(s=><article key={s.title} onClick={()=>setSelected(s)}><span>{s.icon}</span><small>{s.group}</small><h3>{s.title}</h3><p>{s.desc}</p><b>Xem dấu hiệu & cách xử lý　↗</b></article>)}</div>{filtered.length>9&&<p className="note">Đang hiển thị 9/{filtered.length} kết quả. Dùng bộ lọc hoặc tìm kiếm để xem nhóm cụ thể.</p>}</section>
 <section className="checker" id="check"><div><label>KIỂM TRA TRONG 30 GIÂY</label><h2>Có điều gì đó<br/>không ổn?</h2><p>Đánh dấu những điều xuất hiện. Đây là sàng lọc ban đầu, không phải kết luận điều tra.</p><aside><small>KẾT QUẢ TẠM THỜI</small><b>{count===0?"Chưa chọn dấu hiệu":count===1?"Cần xác minh thêm":count<=3?"Có dấu hiệu đáng ngờ":"Nguy cơ cao — dừng lại"}</b><span>{count}/8 dấu hiệu</span></aside></div><div className="checklist">{["Yêu cầu chuyển tiền, đặt cọc hoặc phí trước","Xin OTP, mật khẩu, mã SMS hoặc thông tin thẻ","Gửi link lạ hoặc yêu cầu cài ứng dụng","Thúc giục làm ngay hoặc đe dọa","Yêu cầu giữ bí mật với người thân","Tài khoản nhận tiền là tài khoản cá nhân","Lợi ích, lương hoặc giá quá hấp dẫn","Không cho tự xác minh qua kênh chính thức"].map((x,i)=><button className={checks[i]?"on":""} key={x} onClick={()=>setChecks(c=>c.map((v,j)=>j===i?!v:v))}><i>✓</i>{x}</button>)}<button className="analyze" onClick={()=>open(`Tình huống của em có ${count} dấu hiệu trong checklist. Em cần làm gì?`)}>Phân tích kỹ hơn với trợ lý →</button></div></section>
 <section className="content urgent" id="urgent"><header><div><label>XỬ LÝ KHẨN CẤP</label><h2>Bạn đã thực hiện thao tác?</h2><p>Đừng hoảng loạn. Ưu tiên giảm thiệt hại theo đúng thứ tự.</p></div></header><div className="steps">{[["01","Dừng ngay","Dừng chuyển tiền, liên lạc, bấm link và cài app."],["02","Gọi ngân hàng","Dùng số chính thức để khóa giao dịch và tra soát."],["03","Bảo vệ tài khoản","Đổi mật khẩu an toàn, đăng xuất phiên lạ, bật 2FA."],["04","Lưu bằng chứng","Giữ tin nhắn, URL, tài khoản nhận và biên lai."],["05","Trình báo","Liên hệ Công an khi mất tiền, bị đe dọa hoặc cài mã độc."],["06","Cảnh giác lần hai","Không nộp phí cho dịch vụ hứa lấy lại tiền."]].map(x=><article key={x[0]}><span>{x[0]}</span><h3>{x[1]}</h3><p>{x[2]}</p></article>)}</div><div className="danger"><b>Đã cài app lạ hoặc bật quyền Trợ năng?</b><span>Ngắt mạng thiết bị, không mở app ngân hàng và liên hệ ngân hàng ngay.</span><button onClick={()=>open("Em đã cài app lạ và bật quyền Trợ năng, giờ phải làm gì?")}>Mở hướng dẫn</button></div></section>
