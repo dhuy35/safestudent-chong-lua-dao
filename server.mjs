@@ -109,7 +109,10 @@ ${knowledge}`;
           systemInstruction: { parts: [{ text: systemInstruction }] },
           contents: [...history, { role: "user", parts: [{ text: message }] }],
           generationConfig: {
-            maxOutputTokens: 1400,
+            // Gemini 3 models may use part of this budget for internal thinking.
+            // Keep enough headroom so a short Vietnamese safety checklist is not
+            // cut off in the middle of a numbered item.
+            maxOutputTokens: 4096,
             thinkingConfig: {
               thinkingLevel: "LOW"
             }
