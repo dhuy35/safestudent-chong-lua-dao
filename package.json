@@ -17,8 +17,7 @@
     "react-dom": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "express": "latest",
-    "openai": "latest"
+    "express": "latest"
   },
   "devDependencies": {}
 }
