@@ -83,9 +83,12 @@ function meaningfulWords(input:string){
 
 function caseCoversFollowup(hit:Scam,input:string){
   const t=norm(input);
-  if(/lam gi|xu ly|nen lam|phai lam|gio sao|tiep theo/.test(t))return true;
   const words=meaningfulWords(input);
   if(words.length===0)return false;
+  // Giữ câu hỏi nối tiếp rất ngắn trong kho local. Khi người dùng bổ sung
+  // chi tiết mới, chuyển sang Gemini để hội thoại và phân tích linh hoạt hơn.
+  if(words.length<=4&&/lam gi|xu ly|nen lam|phai lam|gio sao|tiep theo/.test(t))return true;
+  if(words.length>5)return false;
   const corpus=norm([hit.title,hit.desc,hit.example,...hit.signs,hit.action].join(" "));
   const covered=words.filter(w=>corpus.includes(w)).length;
   return covered>=2&&covered/words.length>=0.6;
@@ -124,6 +127,7 @@ function recordLog(payload:{user:string;sessionId:string;input:string;answer:str
 }
 
 type QuizItem={tag:string;question:string;answers:string[];correct:number;explain:string};
+type ChatMessage={role:"bot"|"user";text:string;source?:"system"|"45_cases"|"gemini"|"fallback";model?:string};
 const quizData:QuizItem[]=[
   {tag:"HỌC BỔNG",question:"Email học bổng yêu cầu phí gấp vào tài khoản cá nhân. Bạn làm gì trước?",answers:["Chuyển trước để giữ suất","Hỏi người gửi có hoàn tiền không","Tự mở website ULIS và gọi đơn vị chính thức"],correct:2,explain:"Đáp án C. Logo và con dấu không thay thế việc xác minh qua kênh chính thức."},
   {tag:"GIẢ DANH",question:"Người tự xưng công an gọi video, yêu cầu giữ bí mật và chuyển tiền. Bạn làm gì?",answers:["Làm theo vì họ biết thông tin cá nhân","Kết thúc cuộc gọi và tự xác minh","Chuyển một khoản nhỏ để kiểm tra"],correct:1,explain:"Đáp án B. Cơ quan công an không yêu cầu chuyển tiền để chứng minh vô tội qua điện thoại."},
@@ -133,7 +137,7 @@ const quizData:QuizItem[]=[
   {tag:"TÀI CHÍNH",question:"Ứng dụng nhiệm vụ yêu cầu nộp thêm phí để được rút tiền. Bạn làm gì?",answers:["Nạp lần cuối để lấy lại tiền","Vay bạn bè hoàn thành nhiệm vụ","Dừng nạp, lưu bằng chứng và gọi ngân hàng"],correct:2,explain:"Đáp án C. Không chuyển thêm tiền để cố lấy lại số tiền đã mất."}
 ];
 
-export default function Home(){const[group,setGroup]=useState("Tất cả"),[query,setQuery]=useState(""),[selected,setSelected]=useState<Scam|null>(null),[chat,setChat]=useState(false),[input,setInput]=useState(""),[checks,setChecks]=useState<boolean[]>(Array(8).fill(false)),[messages,setMessages]=useState<{role:"bot"|"user",text:string}[]>([{role:"bot",text:"Chào bạn! Hãy kể điều đang xảy ra. Mình sẽ tìm dấu hiệu rủi ro và hướng dẫn bước an toàn tiếp theo.\n\nĐừng gửi OTP, mật khẩu, PIN, CVV hoặc CCCD đầy đủ."}]),[activeCase,setActiveCase]=useState<Scam|null>(null),[loading,setLoading]=useState(false),[userId]=useState(getUserId),[sessionId]=useState(()=>createId("SESSION")),[quizIndex,setQuizIndex]=useState(0),[quizScore,setQuizScore]=useState(0),[quizChoice,setQuizChoice]=useState<number|null>(null),[quizFinished,setQuizFinished]=useState(false);const filtered=useMemo(()=>scams.filter(s=>(group==="Tất cả"||s.group===group)&&norm([s.title,s.desc,...s.keys].join(" ")).includes(norm(query))),[group,query]);const count=checks.filter(Boolean).length;async function send(e?:FormEvent,preset?:string){
+export default function Home(){const[group,setGroup]=useState("Tất cả"),[query,setQuery]=useState(""),[selected,setSelected]=useState<Scam|null>(null),[chat,setChat]=useState(false),[input,setInput]=useState(""),[checks,setChecks]=useState<boolean[]>(Array(8).fill(false)),[messages,setMessages]=useState<ChatMessage[]>([{role:"bot",text:"Chào bạn! Hãy kể điều đang xảy ra. Mình sẽ tìm dấu hiệu rủi ro và hướng dẫn bước an toàn tiếp theo.\n\nĐừng gửi OTP, mật khẩu, PIN, CVV hoặc CCCD đầy đủ.",source:"system"}]),[activeCase,setActiveCase]=useState<Scam|null>(null),[loading,setLoading]=useState(false),[userId]=useState(getUserId),[sessionId]=useState(()=>createId("SESSION")),[quizIndex,setQuizIndex]=useState(0),[quizScore,setQuizScore]=useState(0),[quizChoice,setQuizChoice]=useState<number|null>(null),[quizFinished,setQuizFinished]=useState(false);const filtered=useMemo(()=>scams.filter(s=>(group==="Tất cả"||s.group===group)&&norm([s.title,s.desc,...s.keys].join(" ")).includes(norm(query))),[group,query]);const count=checks.filter(Boolean).length;async function send(e?:FormEvent,preset?:string){
   e?.preventDefault();
   const v=(preset??input).trim();
   if(!v||loading)return;
@@ -148,7 +152,7 @@ export default function Home(){const[group,setGroup]=useState("Tất cả"),[que
   setInput("");
   if(matchedCase)setActiveCase(matchedCase);
   if(useLocalFirst||useLocalFollowup){
-    setMessages(m=>[...m,{role:"bot",text:fallback}]);
+    setMessages(m=>[...m,{role:"bot",text:fallback,source:"45_cases"}]);
     void recordLog({user:userId,sessionId,input:v,answer:fallback,responseTimeMs:Date.now()-startedAt,source:"45_cases",caseTitle:conversationCase?.title,status:"success"});
     return;
   }
@@ -156,11 +160,12 @@ export default function Home(){const[group,setGroup]=useState("Tất cả"),[que
   try{
     const response=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:v,context:conversationCase?caseContext(conversationCase):contextFor(v),history:messages.slice(-6).map(m=>({role:m.role==="bot"?"assistant":"user",content:m.text}))})});
     const data=await response.json().catch(()=>({}));
-    const answer=response.ok&&typeof data.answer==="string"?data.answer:fallback;
-    setMessages(m=>[...m,{role:"bot",text:answer}]);
+    const fromGemini=response.ok&&typeof data.answer==="string";
+    const answer=fromGemini?data.answer:fallback;
+    setMessages(m=>[...m,{role:"bot",text:answer,source:fromGemini?"gemini":"fallback",model:data.model}]);
     void recordLog({user:userId,sessionId,input:v,answer,responseTimeMs:Date.now()-startedAt,source:response.ok?(data.source||"gemini"):"fallback",caseTitle:conversationCase?.title,model:data.model,status:response.ok?"success":"api_error"});
   }catch{
-    setMessages(m=>[...m,{role:"bot",text:fallback}]);
+    setMessages(m=>[...m,{role:"bot",text:fallback,source:"fallback"}]);
     void recordLog({user:userId,sessionId,input:v,answer:fallback,responseTimeMs:Date.now()-startedAt,source:"fallback",caseTitle:conversationCase?.title,status:"network_error"});
   }finally{
     setLoading(false);
@@ -219,5 +224,5 @@ function open(preset?:string){setChat(true);if(preset)setTimeout(()=>send(undefi
 <section className="promo"><b>✦</b><div><label>TRỢ LÝ TÌNH HUỐNG</label><h2>Bạn không cần biết tên loại lừa đảo.</h2><p>Chỉ cần kể điều đã xảy ra. Trợ lý sẽ tìm dấu hiệu, hỏi thêm và hướng dẫn xử lý an toàn.</p></div><button onClick={()=>open()}>Bắt đầu trò chuyện →</button></section>
 <footer><div className="brand"><b>S</b><span>SAFE<em>STUDENT</em></span></div><p>Dừng lại · Xác minh · Bảo vệ tài khoản · Lưu bằng chứng · Trình báo khi cần</p><small>Công cụ hỗ trợ nhận diện, không thay thế kết luận của cơ quan chức năng.</small></footer>
 {selected&&<div className="backdrop" onClick={()=>setSelected(null)}><div className="modal" onClick={e=>e.stopPropagation()}><button className="x" onClick={()=>setSelected(null)}>×</button><span>{selected.icon}</span><small>{selected.group}</small><h2>{selected.title}</h2><p>{selected.desc}</p><h4>Dấu hiệu cần chú ý</h4><ul>{selected.signs.map(x=><li key={x}>✓ {x}</li>)}</ul><blockquote>“{selected.example}”</blockquote><aside><b>Nên làm ngay</b><p>{selected.action}</p></aside><button className="full" onClick={()=>{setSelected(null);open(selected.example)}}>Tình huống này giống tôi →</button></div></div>}
-<button className="fab" onClick={()=>setChat(v=>!v)}>{chat?"×":"💬"}</button>{chat&&<aside className="chat"><header><b>✦　Trợ lý SafeStudent</b><button onClick={()=>setChat(false)}>—</button></header><small>🔒 Không gửi OTP, mật khẩu, PIN, CVV hoặc CCCD đầy đủ.</small><div className="messages">{messages.map((m,i)=><p className={m.role} key={i}>{m.text}</p>)}{loading&&<p className="bot">Đang phân tích tình huống…</p>}</div><div className="chips"><button onClick={()=>send(undefined,"Có người yêu cầu em đóng phí nhận việc")}>Phí nhận việc</button><button onClick={()=>send(undefined,"Em đã chuyển tiền rồi")}>Đã chuyển tiền</button><button onClick={()=>send(undefined,"Link này có đáng ngờ không?")}>Link lạ</button></div><form onSubmit={send}><textarea value={input} onChange={e=>setInput(e.target.value)} placeholder="Kể tình huống của bạn..."/><button disabled={loading} aria-label="Gửi câu hỏi">➤</button></form></aside>}
+<button className="fab" onClick={()=>setChat(v=>!v)}>{chat?"×":"💬"}</button>{chat&&<aside className="chat"><header><b>✦　Trợ lý SafeStudent</b><button onClick={()=>setChat(false)}>—</button></header><small>🔒 Không gửi OTP, mật khẩu, PIN, CVV hoặc CCCD đầy đủ.</small><div className="messages">{messages.map((m,i)=><div className={`message-row ${m.role}`} key={i}><p className={m.role}>{m.text}</p>{m.role==="bot"&&m.source&&m.source!=="system"&&<small className={`reply-source ${m.source==="45_cases"?"local":m.source}`}>{m.source==="gemini"?"✦ Gemini 3.1 Flash-Lite":m.source==="45_cases"?"▣ Kho 45 tình huống":"⚠ Hướng dẫn dự phòng"}</small>}</div>)}{loading&&<p className="bot">Đang phân tích tình huống…</p>}</div><div className="chips"><button onClick={()=>send(undefined,"Có người yêu cầu em đóng phí nhận việc")}>Phí nhận việc</button><button onClick={()=>send(undefined,"Em đã chuyển tiền rồi")}>Đã chuyển tiền</button><button onClick={()=>send(undefined,"Link này có đáng ngờ không?")}>Link lạ</button></div><form onSubmit={send}><textarea value={input} onChange={e=>setInput(e.target.value)} placeholder="Kể tình huống của bạn..."/><button disabled={loading} aria-label="Gửi câu hỏi">➤</button></form></aside>}
 </main>}

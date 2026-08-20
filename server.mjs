@@ -2,7 +2,8 @@ import express from "express";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
-const model = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.1-flash-lite";
+const apiKey = process.env.GEMINI_API_KEY?.trim() || "";
 const limiter = new Map();
 const logLimiter = new Map();
 
@@ -56,7 +57,7 @@ setInterval(() => {
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
-    aiConfigured: Boolean(process.env.GEMINI_API_KEY),
+    aiConfigured: Boolean(apiKey),
     loggingConfigured: Boolean(process.env.LOG_WEBHOOK_URL),
     provider: "gemini",
     model
@@ -126,7 +127,7 @@ app.post("/api/chat", async (req, res) => {
   if (!message || message.length > 2000) {
     return res.status(400).json({ error: "Nội dung phải có từ 1 đến 2.000 ký tự." });
   }
-  if (!process.env.GEMINI_API_KEY) {
+  if (!apiKey) {
     return res.status(503).json({ error: "Gemini AI chưa được cấu hình." });
   }
 
@@ -182,7 +183,7 @@ ${knowledge}`;
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-goog-api-key": process.env.GEMINI_API_KEY
+          "x-goog-api-key": apiKey
         },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemInstruction }] },
