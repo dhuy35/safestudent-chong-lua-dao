@@ -97,7 +97,7 @@ ${knowledge}`,
 });
 
 app.use(express.static("dist"));
-app.get("*", (_req, res) => res.sendFile("index.html", { root: "dist" }));
+app.use((_req, res) => res.sendFile("index.html", { root: "dist" }));
 
 app.listen(port, "0.0.0.0", () => {
   console.log(`SafeStudent listening on port ${port}`);
