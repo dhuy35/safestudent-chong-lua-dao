@@ -54,23 +54,70 @@ const groups=["Tất cả","Mạng & giả mạo","Tiền bạc & tài chính","
 const norm=(s:string)=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 function analyze(input:string){const t=norm(input);const ranked=scams.map(s=>({s,n:s.keys.filter(k=>t.includes(norm(k))).length})).sort((a,b)=>b.n-a.n);const hit=ranked[0].n>=1?ranked[0].s:null;const danger=/da chuyen|da nap|mat tien|bi de doa|tong tien|giu ho chieu|giu can cuoc|khong cho ra ngoai|khach san|co lap/.test(t);const exposed=/da nhap|da cung cap|da gui|otp|mat khau|cccd|ho chieu|anh rieng tu|video nhay cam/.test(t);const money=/chuyen tien|nap tien|dong phi|dat coc|thanh toan|vay tien|mo khoa/.test(t);if(danger)return `MỨC ĐỘ: NGUY CƠ CAO\n\n${hit?`Tình huống gần nhất: ${hit.title}.\n${hit.action}\n\n`:""}Làm ngay:\n1. Dừng chuyển tiền, gửi dữ liệu hoặc làm theo yêu cầu.\n2. Báo một người đáng tin cậy; không tự xử lý một mình.\n3. Nếu đã chuyển tiền, gọi ngân hàng qua số chính thức.\n4. Lưu tin nhắn, đường link, tài khoản và biên lai.\n5. Nếu đang mất an toàn, đến nơi công cộng hoặc nơi có người hỗ trợ khi có thể an toàn.\n\nKhông chuyển thêm tiền cho người hứa lấy lại tiền.`;if(exposed||money)return `MỨC ĐỘ: ĐÁNG NGỜ / CẦN XỬ LÝ SỚM\n\n${hit?`Có thể liên quan: ${hit.title}.\n${hit.action}\n\n`:""}Dừng lại, không gửi thêm tiền hoặc dữ liệu; xác minh qua kênh chính thức không do đối tượng cung cấp.\n\nBạn đã thực hiện yêu cầu nào chưa, và hiện họ có đang thúc giục hoặc đe dọa bạn không?`;if(hit)return `MỨC ĐỘ: CẦN XÁC MINH THÊM\n\nTình huống có nét giống: ${hit.title}. Chưa thể kết luận chỉ từ thông tin hiện có.\n${hit.desc}\n\nCần biết thêm:\n1. Họ yêu cầu bạn chuyển tiền, đóng phí hoặc cung cấp thông tin gì?\n2. Bạn đã làm theo bước nào chưa?\n3. Họ có đang thúc giục, đe dọa hoặc yêu cầu giữ bí mật không?\n\nKhông gửi OTP, mật khẩu, PIN, CVV hoặc ảnh giấy tờ đầy đủ.`;return "MỨC ĐỘ: CHƯA ĐỦ DỮ KIỆN\n\nHãy mô tả người đó yêu cầu bạn làm gì, có liên quan đến tiền, đường link, ứng dụng, giấy tờ, hình ảnh riêng tư hoặc địa điểm vắng không; đồng thời cho biết bạn đã làm theo bước nào chưa.\n\nKhông gửi OTP, mật khẩu, PIN, CVV hoặc ảnh giấy tờ đầy đủ."}
 
-function contextFor(input:string){
+function rankedMatches(input:string){
   const t=norm(input);
-  const ranked=scams.map(s=>({s,n:s.keys.filter(k=>t.includes(norm(k))).length})).sort((a,b)=>b.n-a.n);
-  const hit=ranked[0]?.n>=1?ranked[0].s:null;
-  return hit?{title:hit.title,group:hit.group,description:hit.desc,signs:hit.signs,action:hit.action}:null;
+  return scams.map(s=>({s,n:s.keys.filter(k=>t.includes(norm(k))).length})).sort((a,b)=>b.n-a.n);
 }
 
-export default function Home(){const[group,setGroup]=useState("Tất cả"),[query,setQuery]=useState(""),[selected,setSelected]=useState<Scam|null>(null),[chat,setChat]=useState(false),[input,setInput]=useState(""),[checks,setChecks]=useState<boolean[]>(Array(8).fill(false)),[messages,setMessages]=useState<{role:"bot"|"user",text:string}[]>([{role:"bot",text:"Chào bạn! Hãy kể điều đang xảy ra. Mình sẽ tìm dấu hiệu rủi ro và hướng dẫn bước an toàn tiếp theo.\n\nĐừng gửi OTP, mật khẩu, PIN, CVV hoặc CCCD đầy đủ."}]),[loading,setLoading]=useState(false);const filtered=useMemo(()=>scams.filter(s=>(group==="Tất cả"||s.group===group)&&norm([s.title,s.desc,...s.keys].join(" ")).includes(norm(query))),[group,query]);const count=checks.filter(Boolean).length;async function send(e?:FormEvent,preset?:string){
+function contextFor(input:string){
+  const ranked=rankedMatches(input);
+  const hit=ranked[0]?.n>=1?ranked[0].s:null;
+  return hit?caseContext(hit):null;
+}
+
+function caseContext(hit:Scam){
+  return {title:hit.title,group:hit.group,description:hit.desc,signs:hit.signs,action:hit.action};
+}
+
+function strongLocalCase(input:string){
+  const ranked=rankedMatches(input);
+  const best=ranked[0]?.n??0;
+  const second=ranked[1]?.n??0;
+  return norm(input).length>=24&&best>=3&&best-second>=2?ranked[0].s:null;
+}
+
+const ignoredWords=new Set(["anh","ban","bi","biet","cai","cho","co","cua","dang","day","duoc","em","gio","ho","khong","la","lai","lam","minh","mot","nay","nen","nguoi","nhung","phai","roi","sau","thi","the","them","toi","va","voi"]);
+function meaningfulWords(input:string){
+  return [...new Set(norm(input).replace(/[^a-z0-9\s]/g," ").split(/\s+/).filter(w=>w.length>=3&&!ignoredWords.has(w)))];
+}
+
+function caseCoversFollowup(hit:Scam,input:string){
+  const t=norm(input);
+  if(/lam gi|xu ly|nen lam|phai lam|gio sao|tiep theo/.test(t))return true;
+  const words=meaningfulWords(input);
+  if(words.length===0)return false;
+  const corpus=norm([hit.title,hit.desc,hit.example,...hit.signs,hit.action].join(" "));
+  const covered=words.filter(w=>corpus.includes(w)).length;
+  return covered>=2&&covered/words.length>=0.6;
+}
+
+function answerFromCase(hit:Scam,input:string){
+  const t=norm(input);
+  const urgent=/da chuyen|da nap|mat tien|bi de doa|tong tien|giu ho chieu|giu can cuoc|khong cho ra ngoai|co lap/.test(t);
+  if(urgent)return `MỨC ĐỘ: NGUY CƠ CAO\n\nTình huống đang trao đổi: ${hit.title}.\n${hit.action}\n\nLàm ngay:\n1. Dừng chuyển tiền, gửi dữ liệu hoặc làm theo yêu cầu.\n2. Nếu đã chuyển tiền, gọi ngân hàng qua số chính thức để yêu cầu hỗ trợ.\n3. Lưu tin nhắn, đường link, tài khoản nhận tiền và biên lai.\n4. Báo một người đáng tin cậy; nếu có nguy cơ an toàn cá nhân, tìm hỗ trợ trực tiếp.\n\nKhông chuyển thêm tiền cho người hứa lấy lại tiền.`;
+  return `MỨC ĐỘ: CẦN THẬN TRỌNG\n\nTình huống đang trao đổi: ${hit.title}.\n\n${hit.action}\n\nDấu hiệu cần đối chiếu:\n${hit.signs.slice(0,4).map((s,i)=>`${i+1}. ${s}`).join("\n")}\n\nNếu xuất hiện chi tiết mới không nằm trong các dấu hiệu trên, hãy nói rõ để trợ lý phân tích thêm.`;
+}
+
+export default function Home(){const[group,setGroup]=useState("Tất cả"),[query,setQuery]=useState(""),[selected,setSelected]=useState<Scam|null>(null),[chat,setChat]=useState(false),[input,setInput]=useState(""),[checks,setChecks]=useState<boolean[]>(Array(8).fill(false)),[messages,setMessages]=useState<{role:"bot"|"user",text:string}[]>([{role:"bot",text:"Chào bạn! Hãy kể điều đang xảy ra. Mình sẽ tìm dấu hiệu rủi ro và hướng dẫn bước an toàn tiếp theo.\n\nĐừng gửi OTP, mật khẩu, PIN, CVV hoặc CCCD đầy đủ."}]),[activeCase,setActiveCase]=useState<Scam|null>(null),[loading,setLoading]=useState(false);const filtered=useMemo(()=>scams.filter(s=>(group==="Tất cả"||s.group===group)&&norm([s.title,s.desc,...s.keys].join(" ")).includes(norm(query))),[group,query]);const count=checks.filter(Boolean).length;async function send(e?:FormEvent,preset?:string){
   e?.preventDefault();
   const v=(preset??input).trim();
   if(!v||loading)return;
-  const fallback=analyze(v);
+  const isFirst=!messages.some(m=>m.role==="user");
+  const matchedCase=isFirst?strongLocalCase(v):null;
+  const conversationCase=activeCase??matchedCase;
+  const fallback=conversationCase?answerFromCase(conversationCase,v):analyze(v);
+  const useLocalFirst=isFirst&&Boolean(matchedCase);
+  const useLocalFollowup=!isFirst&&Boolean(activeCase)&&caseCoversFollowup(activeCase!,v);
   setMessages(m=>[...m,{role:"user",text:v}]);
   setInput("");
+  if(matchedCase)setActiveCase(matchedCase);
+  if(useLocalFirst||useLocalFollowup){
+    setMessages(m=>[...m,{role:"bot",text:fallback}]);
+    return;
+  }
   setLoading(true);
   try{
-    const response=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:v,context:contextFor(v),history:messages.slice(-6).map(m=>({role:m.role==="bot"?"assistant":"user",content:m.text}))})});
+    const response=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:v,context:conversationCase?caseContext(conversationCase):contextFor(v),history:messages.slice(-6).map(m=>({role:m.role==="bot"?"assistant":"user",content:m.text}))})});
     const data=await response.json().catch(()=>({}));
     const answer=response.ok&&typeof data.answer==="string"?data.answer:fallback;
     setMessages(m=>[...m,{role:"bot",text:answer}]);
