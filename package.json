@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
@@ -15,7 +16,9 @@
     "react": "latest",
     "react-dom": "latest",
     "@types/react": "latest",
-    "@types/react-dom": "latest"
+    "@types/react-dom": "latest",
+    "express": "latest",
+    "openai": "latest"
   },
   "devDependencies": {}
 }
