@@ -70,7 +70,7 @@ export default function Home(){const[group,setGroup]=useState("Tất cả"),[que
   setInput("");
   setLoading(true);
   try{
-    const response=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:v,context:contextFor(v)})});
+    const response=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:v,context:contextFor(v),history:messages.slice(-6).map(m=>({role:m.role==="bot"?"assistant":"user",content:m.text}))})});
     const data=await response.json().catch(()=>({}));
     const answer=response.ok&&typeof data.answer==="string"?data.answer:fallback;
     setMessages(m=>[...m,{role:"bot",text:answer}]);
