@@ -101,6 +101,14 @@ function answerFromCase(hit:Scam,input:string){
   return `MỨC ĐỘ: CẦN THẬN TRỌNG\n\nTình huống đang trao đổi: ${hit.title}.\n\n${hit.action}\n\nDấu hiệu cần đối chiếu:\n${hit.signs.slice(0,4).map((s,i)=>`${i+1}. ${s}`).join("\n")}\n\nNếu xuất hiện chi tiết mới không nằm trong các dấu hiệu trên, hãy nói rõ để trợ lý phân tích thêm.`;
 }
 
+function cleanBotText(value:string){
+  return value
+    .replace(/\*\*(.*?)\*\*/gs,"$1")
+    .replace(/\*\*/g,"")
+    .replace(/^#{1,6}\s+/gm,"")
+    .trim();
+}
+
 function createId(prefix:string){
   const random=typeof crypto!=="undefined"&&"randomUUID" in crypto?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36);
   return `${prefix}_${random}`;
@@ -145,7 +153,7 @@ export default function Home(){const[group,setGroup]=useState("Tất cả"),[que
   const isFirst=!messages.some(m=>m.role==="user");
   const matchedCase=isFirst?strongLocalCase(v):null;
   const conversationCase=activeCase??matchedCase;
-  const fallback=conversationCase?answerFromCase(conversationCase,v):analyze(v);
+  const fallback=cleanBotText(conversationCase?answerFromCase(conversationCase,v):analyze(v));
   const useLocalFirst=isFirst&&Boolean(matchedCase);
   const useLocalFollowup=!isFirst&&Boolean(activeCase)&&caseCoversFollowup(activeCase!,v);
   setMessages(m=>[...m,{role:"user",text:v}]);
@@ -161,7 +169,7 @@ export default function Home(){const[group,setGroup]=useState("Tất cả"),[que
     const response=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:v,context:conversationCase?caseContext(conversationCase):contextFor(v),history:messages.slice(-6).map(m=>({role:m.role==="bot"?"assistant":"user",content:m.text}))})});
     const data=await response.json().catch(()=>({}));
     const fromGemini=response.ok&&typeof data.answer==="string";
-    const answer=fromGemini?data.answer:fallback;
+    const answer=cleanBotText(fromGemini?data.answer:fallback);
     setMessages(m=>[...m,{role:"bot",text:answer,source:fromGemini?"gemini":"fallback",model:data.model}]);
     void recordLog({user:userId,sessionId,input:v,answer,responseTimeMs:Date.now()-startedAt,source:response.ok?(data.source||"gemini"):"fallback",caseTitle:conversationCase?.title,model:data.model,status:response.ok?"success":"api_error"});
   }catch{
