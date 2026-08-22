@@ -60,8 +60,9 @@ function rankedMatches(input:string){
 }
 
 function contextFor(input:string){
-  const ranked=rankedMatches(input);
-  const hit=ranked[0]?.n>=1?ranked[0].s:null;
+  // Chỉ gửi context sang Gemini khi case khớp đủ mạnh. Một từ khóa chung
+  // không được phép kéo câu hỏi ngoài dữ liệu sang một case không liên quan.
+  const hit=strongLocalCase(input);
   return hit?caseContext(hit):null;
 }
 
@@ -109,6 +110,14 @@ function cleanBotText(value:string){
     .trim();
 }
 
+function geminiUnavailableFallback(input:string){
+  const t=norm(input);
+  const paid=/da chuyen|da nap|mat tien|chuyen them|nap them|tra them|lay lai tien|hoan tien/.test(t);
+  return paid
+    ? "TRỢ LÝ AI ĐANG TẠM CHẬM\n\nMình chưa thể hoàn tất phân tích bằng Gemini lúc này. Vì bạn đã chuyển tiền hoặc đang bị yêu cầu chuyển thêm, hãy dừng chuyển tiền ngay, lưu toàn bộ tin nhắn và biên lai, rồi gọi ngân hàng qua số chính thức để hỏi hỗ trợ tra soát. Không đóng thêm bất kỳ khoản phí nào để nhận lại tiền.\n\nBạn có thể gửi lại câu hỏi sau ít giây."
+    : "TRỢ LÝ AI ĐANG TẠM CHẬM\n\nCâu hỏi này không khớp đủ chắc với kho 45 tình huống nên hệ thống cần Gemini phân tích. Gemini hiện chưa phản hồi kịp; mình sẽ không tự ghép câu hỏi của bạn vào một case không liên quan.\n\nTrong lúc chờ, không chuyển tiền, không bấm link lạ và không gửi thông tin nhạy cảm. Bạn có thể gửi lại câu hỏi sau ít giây.";
+}
+
 function createId(prefix:string){
   const random=typeof crypto!=="undefined"&&"randomUUID" in crypto?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36);
   return `${prefix}_${random}`;
@@ -153,7 +162,7 @@ export default function Home(){const[group,setGroup]=useState("Tất cả"),[que
   const isFirst=!messages.some(m=>m.role==="user");
   const matchedCase=isFirst?strongLocalCase(v):null;
   const conversationCase=activeCase??matchedCase;
-  const fallback=cleanBotText(conversationCase?answerFromCase(conversationCase,v):analyze(v));
+  const fallback=cleanBotText(conversationCase?answerFromCase(conversationCase,v):geminiUnavailableFallback(v));
   const useLocalFirst=isFirst&&Boolean(matchedCase);
   const useLocalFollowup=!isFirst&&Boolean(activeCase)&&caseCoversFollowup(activeCase!,v);
   setMessages(m=>[...m,{role:"user",text:v}]);
