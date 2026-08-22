@@ -175,7 +175,9 @@ ${knowledge}`;
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
+    // Free-tier Gemini can occasionally take longer than 30 seconds. Give the
+    // model enough time before the frontend falls back to a safety-only reply.
+    const timeout = setTimeout(() => controller.abort(), 55_000);
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     let response;
